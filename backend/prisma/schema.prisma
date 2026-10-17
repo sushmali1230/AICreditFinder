@@ -1,0 +1,192 @@
+// Prisma Schema for Bank Credit Analysis & Loan Recommendation System
+// Designed for compliance, deterministic financial auditing, and explainable lending
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String             @id @default(uuid())
+  email               String             @unique
+  passwordHash        String
+  name                String
+  role                String             // 'ANALYST', 'APPROVER', 'ADMIN'
+  employeeId          String             @unique
+  department          String             @default("Credit Risk & Underwriting")
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  assessmentsReviewed CreditAssessment[] @relation("DecisionMaker")
+  auditLogs           AuditLog[]
+}
+
+model Customer {
+  id                        String             @id @default(uuid())
+  fullName                  String
+  email                     String
+  phone                     String
+  panNumber                 String             @unique
+  aadhaarMasked             String
+  dateOfBirth               String
+  employmentType            String             // 'SALARIED', 'SELF_EMPLOYED_BUSINESS', 'SELF_EMPLOYED_PROFESSIONAL'
+  employerName              String?
+  businessName              String?
+  address                   String
+  city                      String
+  state                     String
+  pincode                   String
+  creditScore               Int                // CIBIL / Experian score (300-900)
+  requestedLoanAmount       Float
+  requestedLoanTenureMonths Int
+  requestedLoanPurpose      String             // Home, Business Expansion, Personal, Machinery, Working Capital
+  riskCategory              String             @default("PENDING_ANALYSIS") // 'LOW_RISK', 'MODERATE_RISK', 'HIGH_RISK', 'CRITICAL'
+  status                    String             @default("ACTIVE")
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+  bankStatements            BankStatement[]
+  itrRecords                ItrRecord[]
+  creditAssessments         CreditAssessment[]
+}
+
+model BankStatement {
+  id                       String            @id @default(uuid())
+  customerId               String
+  customer                 Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bankName                 String
+  accountNumberMasked      String
+  accountType              String            @default("SAVINGS") // 'SAVINGS', 'CURRENT'
+  statementPeriodStart     DateTime
+  statementPeriodEnd       DateTime
+  totalCredits             Float             @default(0)
+  totalDebits              Float             @default(0)
+  netCashflow              Float             @default(0)
+  averageMonthlyBalance    Float             @default(0)
+  minMonthlyBalance        Float             @default(0)
+  maxMonthlyBalance        Float             @default(0)
+  monthlySalaryDetected    Float             @default(0)
+  recurringEmiDetected     Float             @default(0)
+  bounceCount              Int               @default(0)
+  unusualTransactionsCount Int               @default(0)
+  salaryConsistencyScore   Float             @default(100) // 0-100%
+  rawFileUrl               String?
+  fileFormat               String            // 'CSV', 'EXCEL', 'PDF'
+  uploadedAt               DateTime          @default(now())
+  transactions             BankTransaction[]
+}
+
+model BankTransaction {
+  id              String        @id @default(uuid())
+  bankStatementId String
+  bankStatement   BankStatement @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+  date            DateTime
+  description     String
+  referenceNo     String?
+  amount          Float
+  type            String        // 'CREDIT', 'DEBIT'
+  category        String        // 'SALARY', 'BUSINESS_CREDIT', 'EMI_OUTFLOW', 'INVESTMENT', 'UTILITIES_RENT', 'CASH_WITHDRAWAL', 'CASH_DEPOSIT', 'BOUNCE_PENALTY', 'OTHER'
+  balanceAfter    Float?
+  isUnusual       Boolean       @default(false)
+  isBounced       Boolean       @default(false)
+  bounceReason    String?
+  notes           String?
+}
+
+model ItrRecord {
+  id                       String    @id @default(uuid())
+  customerId               String
+  customer                 Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assessmentYear           String    // e.g. "AY 2024-25"
+  financialYear            String    // e.g. "FY 2023-24"
+  formType                 String    // "ITR-1", "ITR-2", "ITR-3", "ITR-4"
+  filingDate               DateTime?
+  filingStatus             String    @default("VERIFIED_FILED") // 'VERIFIED_FILED', 'MANUALLY_UPLOADED', 'UNVERIFIED'
+  acknowledgmentNumber     String
+  grossTotalIncome         Float
+  taxableIncome            Float
+  salaryIncome             Float     @default(0)
+  businessProfessionIncome Float     @default(0)
+  otherIncome              Float     @default(0)
+  chapterVIA_Deductions    Float     @default(0) // 80C, 80D, etc.
+  totalTaxesPaid           Float     @default(0)
+  refundOrPayable          Float     @default(0)
+  panNumber                String?
+  rawFileUrl               String?
+  isVerified               Boolean   @default(true)
+  uploadedAt               DateTime  @default(now())
+}
+
+model CreditAssessment {
+  id                          String    @id @default(uuid())
+  customerId                  String
+  customer                    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  version                     Int       @default(1)
+  status                      String    @default("ANALYSIS_COMPLETE") // 'DRAFT', 'ANALYSIS_COMPLETE', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'REASSESSMENT_REQUESTED'
+  verifiedMonthlyIncome       Float
+  existingDebtObligations     Float
+  netDisposableIncome         Float
+  dtiRatio                    Float
+  foirRatio                   Float
+  affordableAdditionalEmi     Float
+  requestedAmount             Float
+  requestedTenureMonths       Int
+  interestRateAnnual          Float
+  calculatedMaxLoanPrincipal  Float
+  calculatedEmi               Float
+  totalInterestPayable        Float
+  totalRepaymentAmount        Float
+  riskGrade                   String    // 'PRIME_A', 'GOOD_B', 'BORDERLINE_C', 'HIGH_RISK_D'
+  positiveIndicators          String    // JSON array of strings
+  riskFactors                 String    // JSON array of strings
+  incomeDiscrepancies         String    // JSON array of objects
+  missingDocuments            String    // JSON array of strings
+  calculationAssumptions      String    // JSON array of strings
+  recommendationReasoning     String    // Plain-text explanation
+  conservativeScenario        String    // JSON stringified scenario object
+  standardScenario            String    // JSON stringified scenario object
+  aggressiveScenario          String    // JSON stringified scenario object
+  aiExplanation               String?   // Explainable summary
+  analystNotes                String?
+  approverNotes               String?
+  decisionBy                  String?
+  decisionDate                DateTime?
+  approvedAmount              Float?
+  approvedTenureMonths        Int?
+  approvedInterestRate        Float?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  decisionMakerId             String?
+  decisionMaker               User?     @relation("DecisionMaker", fields: [decisionMakerId], references: [id])
+}
+
+model LendingPolicyConfig {
+  id                          String    @id @default(uuid())
+  policyName                  String
+  description                 String
+  maxFoirSalaried             Float     @default(50.0) // 50%
+  maxFoirSelfEmployed         Float     @default(55.0) // 55%
+  minCreditScore              Int       @default(650)
+  minAverageMonthlyBalance    Float     @default(10000.0)
+  baseInterestRate            Float     @default(10.5) // 10.5%
+  haircutUnverifiedIncome     Float     @default(20.0) // 20% haircut
+  maxAllowedBouncesLast6Months Int      @default(1)
+  isDefault                   Boolean   @default(true)
+  updatedAt                   DateTime  @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  userName    String
+  userRole    String
+  action      String   // 'CUSTOMER_CREATED', 'STATEMENT_UPLOADED', 'ITR_UPLOADED', 'ASSESSMENT_RUN', 'LOAN_APPROVED', 'LOAN_REJECTED', 'POLICY_UPDATED', etc.
+  entityType  String   // 'Customer', 'CreditAssessment', 'BankStatement', 'ItrRecord', 'LendingPolicy'
+  entityId    String
+  details     String   // JSON or text details
+  ipAddress   String   @default("127.0.0.1")
+  createdAt   DateTime @default(now())
+}

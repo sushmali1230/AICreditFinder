@@ -1,0 +1,199 @@
+import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+import multer from 'multer';
+import {
+  parseStatementCSV,
+  parseStatementExcel,
+  parseStatementText,
+  analyzeBankTransactions,
+  ParsedTransaction,
+} from '../services/statementParser.js';
+import { AuthenticatedRequest } from '../middleware/auth.js';
+import { logAudit } from '../services/auditService.js';
+
+const prisma = new PrismaClient();
+
+// Multer memory storage configuration for secure handling
+export const uploadStatementMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB max file size
+  fileFilter: (_req, file, cb) => {
+    const allowedMime = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/pdf',
+      'text/plain',
+    ];
+    if (
+      allowedMime.includes(file.mimetype) ||
+      file.originalname.endsWith('.csv') ||
+      file.originalname.endsWith('.xlsx') ||
+      file.originalname.endsWith('.xls') ||
+      file.originalname.endsWith('.pdf') ||
+      file.originalname.endsWith('.txt')
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid format: Only CSV, Excel (.xlsx/.xls), and PDF statements supported.'));
+    }
+  },
+});
+
+export async function uploadStatement(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const customerId = req.params.customerId as string;
+    const { bankName = 'Commercial Bank', accountType = 'SAVINGS' } = req.body;
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!customer) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    let parsedTransactions: ParsedTransaction[] = [];
+    let fileFormat = 'CSV';
+
+    if (req.file) {
+      const filename = req.file.originalname.toLowerCase();
+
+      if (filename.endsWith('.csv')) {
+        fileFormat = 'CSV';
+        parsedTransactions = await parseStatementCSV(req.file.buffer);
+      } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+        fileFormat = 'EXCEL';
+        parsedTransactions = parseStatementExcel(req.file.buffer);
+      } else if (filename.endsWith('.pdf') || filename.endsWith('.txt')) {
+        fileFormat = 'PDF';
+        // Extract text from buffer
+        const textContent = req.file.buffer.toString('utf-8');
+        parsedTransactions = parseStatementText(textContent);
+      }
+    } else if (req.body.transactions && Array.isArray(req.body.transactions)) {
+      // Structured JSON transactions upload option
+      fileFormat = 'CSV';
+      parsedTransactions = req.body.transactions.map((t: any) => ({
+        date: new Date(t.date),
+        description: t.description,
+        amount: Number(t.amount),
+        type: t.type,
+        category: t.category || 'OTHER',
+        balanceAfter: t.balanceAfter ? Number(t.balanceAfter) : undefined,
+        isUnusual: Boolean(t.isUnusual),
+        isBounced: Boolean(t.isBounced),
+        bounceReason: t.bounceReason,
+      }));
+    } else {
+      res.status(400).json({ error: 'No statement file or transaction payload provided' });
+      return;
+    }
+
+    if (parsedTransactions.length === 0) {
+      res.status(400).json({
+        error: 'Unable to extract valid banking transactions from the uploaded file. Please ensure the statement contains Date, Description, Debit/Credit, and Balance columns.',
+      });
+      return;
+    }
+
+    // Perform banking analysis
+    const analysis = analyzeBankTransactions(
+      parsedTransactions,
+      bankName,
+      '•••• •••• ' + Math.floor(1000 + Math.random() * 9000),
+      accountType as any
+    );
+
+    // Save Bank Statement header
+    const statement = await prisma.bankStatement.create({
+      data: {
+        customerId,
+        bankName: analysis.bankName,
+        accountNumberMasked: analysis.accountNumberMasked,
+        accountType: analysis.accountType,
+        statementPeriodStart: analysis.statementPeriodStart,
+        statementPeriodEnd: analysis.statementPeriodEnd,
+        totalCredits: analysis.totalCredits,
+        totalDebits: analysis.totalDebits,
+        netCashflow: analysis.netCashflow,
+        averageMonthlyBalance: analysis.averageMonthlyBalance,
+        minMonthlyBalance: analysis.minMonthlyBalance,
+        maxMonthlyBalance: analysis.maxMonthlyBalance,
+        monthlySalaryDetected: analysis.monthlySalaryDetected,
+        recurringEmiDetected: analysis.recurringEmiDetected,
+        bounceCount: analysis.bounceCount,
+        unusualTransactionsCount: analysis.unusualTransactionsCount,
+        salaryConsistencyScore: analysis.salaryConsistencyScore,
+        fileFormat,
+      },
+    });
+
+    // Save Transactions
+    for (const t of parsedTransactions) {
+      await prisma.bankTransaction.create({
+        data: {
+          bankStatementId: statement.id,
+          date: t.date,
+          description: t.description,
+          referenceNo: t.referenceNo,
+          amount: t.amount,
+          type: t.type,
+          category: t.category,
+          balanceAfter: t.balanceAfter,
+          isUnusual: t.isUnusual,
+          isBounced: t.isBounced,
+          bounceReason: t.bounceReason,
+        },
+      });
+    }
+
+    await logAudit({
+      userId: req.user?.id,
+      userName: req.user?.name,
+      userRole: req.user?.role,
+      action: 'STATEMENT_UPLOADED',
+      entityType: 'BankStatement',
+      entityId: statement.id,
+      details: `Processed ${parsedTransactions.length} transactions for ${customer.fullName}. Credits: ₹${analysis.totalCredits.toLocaleString('en-IN')}, Bounces: ${analysis.bounceCount}`,
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({
+      message: 'Bank statement ingested and analyzed successfully',
+      statement,
+      analysisSummary: {
+        ...analysis,
+        transactionsCount: parsedTransactions.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Statement upload error:', error);
+    res.status(500).json({ error: error.message || 'Failed to process bank statement' });
+  }
+}
+
+export async function getStatementDetails(req: Request, res: Response): Promise<void> {
+  try {
+    const id = req.params.id as string;
+
+    const statement = await prisma.bankStatement.findUnique({
+      where: { id },
+      include: {
+        transactions: {
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+
+    if (!statement) {
+      res.status(404).json({ error: 'Bank statement not found' });
+      return;
+    }
+
+    res.json({ statement });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to retrieve bank statement' });
+  }
+}
