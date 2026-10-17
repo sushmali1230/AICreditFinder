@@ -68,19 +68,19 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({
       {/* Top Borrower Profile Header */}
       <div className="glass-panel rounded-2xl p-5 border border-slate-800 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-extrabold text-xl shadow-lg shadow-indigo-600/30">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="flex h-11 w-11 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-extrabold text-lg sm:text-xl shadow-lg shadow-indigo-600/30">
               {customer.fullName.charAt(0)}
             </div>
 
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 {/* Borrower Selector Dropdown */}
-                <div className="relative inline-block">
+                <div className="relative inline-block max-w-full">
                   <select
                     value={customer.id}
                     onChange={(e) => onSelectCustomer(e.target.value)}
-                    className="appearance-none font-heading text-xl font-bold text-white bg-slate-900 border border-slate-700 rounded-xl pr-8 pl-3 py-1 cursor-pointer focus:border-blue-500 focus:outline-none"
+                    className="appearance-none font-heading text-base sm:text-xl font-bold text-white bg-slate-900 border border-slate-700 rounded-xl pr-7 sm:pr-8 pl-2.5 sm:pl-3 py-1 cursor-pointer focus:border-blue-500 focus:outline-none max-w-[190px] sm:max-w-none truncate"
                   >
                     {customers.map((c) => (
                       <option key={c.id} value={c.id} className="bg-slate-900 text-white">
@@ -88,7 +88,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-2.5 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-2 top-2.5 sm:top-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 pointer-events-none" />
                 </div>
 
                 {/* Employment Badge */}
@@ -140,7 +140,7 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({
           </div>
 
           {/* Requested Facility Badge */}
-          <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 text-right">
+          <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 text-left sm:text-right">
             <span className="text-[11px] text-slate-400">Requested Credit Facility</span>
             <div className="text-xl font-bold text-white">
               {formatINR(customer.requestedLoanAmount)}
@@ -151,42 +151,51 @@ export const CustomerWorkspace: React.FC<CustomerWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Sub-Tabs Navigation */}
-        <div className="mt-5 border-t border-slate-800 pt-3 flex items-center gap-2">
+        {/* Sub-Tabs Navigation (Horizontal scrollable on mobile) */}
+        <div className="mt-5 border-t border-slate-800 pt-3 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             onClick={() => setActiveSubTab('assessment')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubTab === 'assessment'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
             <Sliders className="h-3.5 w-3.5" />
-            <span>Credit Assessment & Scenarios</span>
+            <span>
+              <span className="sm:hidden">Assessment & Scenarios</span>
+              <span className="hidden sm:inline">Credit Assessment & Scenarios</span>
+            </span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('statements')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubTab === 'statements'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
-            <span>Bank Statement Audit ({statements.length})</span>
+            <span>
+              <span className="sm:hidden">Statements ({statements.length})</span>
+              <span className="hidden sm:inline">Bank Statement Audit ({statements.length})</span>
+            </span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('itr')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeSubTab === 'itr'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
             <FileCheck2 className="h-3.5 w-3.5" />
-            <span>Multi-Year ITR Cross-Verification ({itrs.length})</span>
+            <span>
+              <span className="sm:hidden">ITR Audit ({itrs.length})</span>
+              <span className="hidden sm:inline">Multi-Year ITR Cross-Verification ({itrs.length})</span>
+            </span>
           </button>
         </div>
       </div>

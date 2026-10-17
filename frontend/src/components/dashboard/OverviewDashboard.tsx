@@ -168,40 +168,153 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-              <Filter className="h-3.5 w-3.5" />
-              <span>Filters:</span>
-            </div>
-
+          <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto">
             <select
               value={selectedEmployment}
               onChange={(e) => setSelectedEmployment(e.target.value)}
-              className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+              className="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
             >
-              <option value="ALL">All Employment Types</option>
-              <option value="SALARIED">Salaried Executives</option>
-              <option value="SELF_EMPLOYED_BUSINESS">Business / SME</option>
-              <option value="SELF_EMPLOYED_PROFESSIONAL">Professional / Gig</option>
+              <option value="ALL">All Employment</option>
+              <option value="SALARIED">Salaried</option>
+              <option value="SELF_EMPLOYED_BUSINESS">Business/SME</option>
+              <option value="SELF_EMPLOYED_PROFESSIONAL">Professional</option>
             </select>
 
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+              className="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
             >
-              <option value="ALL">All Underwriting Statuses</option>
-              <option value="APPROVED">Approved Sanctions</option>
-              <option value="PENDING_APPROVAL">Pending Approval</option>
-              <option value="REASSESSMENT_REQUESTED">Reassessment Needed</option>
-              <option value="REJECTED">Rejected / Overleveraged</option>
+              <option value="ALL">All Statuses</option>
+              <option value="APPROVED">Sanctioned</option>
+              <option value="PENDING_APPROVAL">Pending Review</option>
+              <option value="REASSESSMENT_REQUESTED">Reassessment</option>
+              <option value="REJECTED">Rejected</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Applications Table */}
-      <div className="glass-panel overflow-hidden rounded-2xl border border-slate-800 shadow-xl">
+      {/* Applications: Mobile Card View (Screens < md) */}
+      <div className="block md:hidden space-y-3">
+        {isLoading ? (
+          <div className="glass-panel rounded-2xl p-8 text-center text-slate-400 border border-slate-800">
+            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent mb-2"></div>
+            <p className="text-xs">Loading underwriting applications...</p>
+          </div>
+        ) : filteredCustomers.length === 0 ? (
+          <div className="glass-panel rounded-2xl p-8 text-center text-slate-400 border border-slate-800">
+            <FileSearch className="mx-auto h-8 w-8 text-slate-600 mb-2" />
+            <p className="font-medium text-slate-300 text-xs">No applications match your filter.</p>
+          </div>
+        ) : (
+          filteredCustomers.map((customer) => {
+            const assessment = customer.creditAssessments?.[0];
+            const grade = assessment?.riskGrade || 'BORDERLINE_C';
+            const status = assessment?.status || 'PENDING_ANALYSIS';
+
+            return (
+              <div
+                key={customer.id}
+                onClick={() => onSelectCustomer(customer.id)}
+                className="glass-panel rounded-2xl p-4 border border-slate-800 shadow-md hover:border-slate-700 transition-all active:scale-[0.99] cursor-pointer"
+              >
+                {/* Header: Name, Avatar, Score */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-blue-400 font-bold border border-slate-700 text-sm">
+                      {customer.fullName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-sm">
+                        {customer.fullName}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <span className="font-mono">{customer.panNumber}</span>
+                        <span>•</span>
+                        <span>{customer.employmentType === 'SALARIED' ? customer.employerName || 'Salaried' : customer.businessName || 'Business'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                      customer.creditScore >= 750
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : customer.creditScore >= 680
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    }`}
+                  >
+                    {customer.creditScore}
+                  </span>
+                </div>
+
+                {/* Facility & Income Details */}
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-900/80 p-2.5 border border-slate-800/80 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Requested Loan</span>
+                    <span className="font-bold text-white">{formatINR(customer.requestedLoanAmount)}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">{customer.requestedLoanTenureMonths}m • {customer.requestedLoanPurpose}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Verified Cash Flow</span>
+                    {assessment ? (
+                      <>
+                        <span className="font-bold text-emerald-400">{formatINR(assessment.verifiedMonthlyIncome)}/mo</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">FOIR: <strong className="text-white">{assessment.foirRatio}%</strong></span>
+                      </>
+                    ) : (
+                      <span className="text-slate-500 italic">Pending analysis</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer: Grade, Status, Action */}
+                <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        grade === 'PRIME_A'
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : grade === 'GOOD_B'
+                          ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                          : grade === 'BORDERLINE_C'
+                          ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                          : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                      }`}
+                    >
+                      {grade.split('_')[1]}
+                    </span>
+
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        status === 'APPROVED'
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : status === 'REJECTED'
+                          ? 'bg-rose-500/20 text-rose-300'
+                          : status === 'PENDING_APPROVAL'
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+
+                  <span className="text-xs font-semibold text-blue-400 flex items-center gap-1">
+                    <span>Open</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Applications: Desktop Table View (Screens >= md) */}
+      <div className="hidden md:block glass-panel overflow-hidden rounded-2xl border border-slate-800 shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-900/90 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">

@@ -73,8 +73,8 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="glass-panel rounded-2xl border border-slate-700 p-6 w-full max-w-2xl shadow-2xl my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-2.5 sm:p-4 overflow-y-auto">
+      <div className="glass-panel rounded-2xl border border-slate-700 p-4 sm:p-6 w-full max-w-2xl shadow-2xl my-auto max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/20 text-blue-400">

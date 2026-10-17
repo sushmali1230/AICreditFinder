@@ -129,11 +129,11 @@ export const CreditAssessmentTab: React.FC<CreditAssessmentTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner: Risk Grade & Sanction Status Bar */}
-      <div className="glass-panel rounded-2xl p-5 border border-slate-800">
+      <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-slate-800">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <div
-              className={`flex h-14 w-14 items-center justify-center rounded-2xl border ${
+              className={`flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl border ${
                 grade === 'PRIME_A'
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 glow-emerald'
                   : grade === 'GOOD_B'
@@ -143,31 +143,31 @@ export const CreditAssessmentTab: React.FC<CreditAssessmentTabProps> = ({
                   : 'bg-rose-500/15 border-rose-500/40 text-rose-400 glow-rose'
               }`}
             >
-              <span className="font-heading text-xl font-extrabold">
+              <span className="font-heading text-lg sm:text-xl font-extrabold">
                 {grade.split('_')[1]}
               </span>
             </div>
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-heading text-xl font-bold text-white">
+                <span className="font-heading text-lg sm:text-xl font-bold text-white">
                   Risk Grade: {grade.replace(/_/g, ' ')}
                 </span>
-                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
-                  Version {assessment.version}
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
+                  v{assessment.version}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Deterministic calculation engine based on Retail Lending Policy 2024.2 • Evaluated {formatDate(assessment.createdAt)}
+              <p className="text-xs text-slate-400 mt-0.5 sm:mt-1">
+                Deterministic calculation engine • Evaluated {formatDate(assessment.createdAt)}
               </p>
             </div>
           </div>
 
           {/* Decisioning & Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             <button
               onClick={handleDownloadCAM}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-200 border border-slate-700 transition-all shadow-sm"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 border border-slate-700 transition-all shadow-sm col-span-2 sm:col-span-1"
               title="Download official Credit Appraisal Memorandum"
             >
               <Download className="h-4 w-4 text-blue-400" />
@@ -179,15 +179,15 @@ export const CreditAssessmentTab: React.FC<CreditAssessmentTabProps> = ({
               <>
                 <button
                   onClick={() => onOpenDecisionModal('APPROVE')}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-emerald-600/30 transition-all"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 text-xs font-bold text-white shadow-lg shadow-emerald-600/30 transition-all"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>Sanction Loan</span>
+                  <span>Sanction</span>
                 </button>
 
                 <button
                   onClick={() => onOpenDecisionModal('REJECT')}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 px-3.5 py-2 text-xs font-bold transition-all"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 px-3 py-2 text-xs font-bold transition-all"
                 >
                   <XCircle className="h-4 w-4" />
                   <span>Reject</span>
@@ -197,10 +197,10 @@ export const CreditAssessmentTab: React.FC<CreditAssessmentTabProps> = ({
 
             <button
               onClick={() => onOpenDecisionModal('REQUEST_REASSESSMENT')}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3.5 py-2 text-xs font-bold transition-all"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-2 text-xs font-bold transition-all col-span-2 sm:col-span-1"
             >
               <RotateCcw className="h-4 w-4" />
-              <span>Request Reassessment</span>
+              <span>Reassess</span>
             </button>
           </div>
         </div>
