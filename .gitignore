@@ -1,7 +1,8 @@
 node_modules/
 dist/
-dev.db
-dev.db-journal
-.env
+*.db
+*.db-journal
+.env.local
+.env.*.local
 *.log
 .DS_Store
