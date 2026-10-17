@@ -7,17 +7,17 @@ import { ParsedITR } from '../src/services/itrParser.js';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding Bank Credit Analysis & Loan Recommendation System...');
+  console.log('Checking database status...');
 
-  // Clean existing data
-  await prisma.auditLog.deleteMany();
-  await prisma.creditAssessment.deleteMany();
-  await prisma.bankTransaction.deleteMany();
-  await prisma.bankStatement.deleteMany();
-  await prisma.itrRecord.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.lendingPolicyConfig.deleteMany();
-  await prisma.user.deleteMany();
+  // If database already contains users/customers, do not wipe existing data
+  const existingUsersCount = await prisma.user.count();
+  const existingCustomersCount = await prisma.customer.count();
+  if (existingUsersCount > 0 || existingCustomersCount > 0) {
+    console.log(`Database already contains ${existingCustomersCount} customers and ${existingUsersCount} users. Preserving existing uploaded statements and customer data.`);
+    return;
+  }
+
+  console.log('Empty database detected. Initializing default bank personnel and demo profiles...');
 
   // 1. Create Bank Employees
   const passwordHash = await bcrypt.hash('password123', 10);
