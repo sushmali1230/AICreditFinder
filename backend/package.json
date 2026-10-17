@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:backend": "tsx watch src/server.ts",
-    "build": "tsc",
+    "prebuild": "node -e \"import fs from 'fs'; if (!process.env.DATABASE_URL && !fs.existsSync('.env')) fs.writeFileSync('.env', 'DATABASE_URL=\\\"file:./dev.db\\\"\\n');\"",
+    "build": "prisma generate && tsc",
+    "render-build": "node -e \"import fs from 'fs'; if (!process.env.DATABASE_URL && !fs.existsSync('.env')) fs.writeFileSync('.env', 'DATABASE_URL=\\\"file:./dev.db\\\"\\n');\" && prisma db push && npm run seed && npm run build",
     "start": "node dist/server.js",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
