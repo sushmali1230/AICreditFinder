@@ -145,25 +145,7 @@ export const BankStatementTab: React.FC<BankStatementTabProps> = ({
 `;
   };
 
-  const handleLoadSampleStatement = async () => {
-    try {
-      setIsUploading(true);
-      setUploadError(null);
-      const csvData = generateSampleCsv();
-      const blob = new Blob([csvData], { type: 'text/csv' });
-      const formData = new FormData();
-      formData.append('file', blob, 'hdfc_statement_6months.csv');
-      formData.append('bankName', 'HDFC Bank');
-      formData.append('accountType', 'SAVINGS');
 
-      await api.statements.upload(customerId, formData);
-      onRefreshCustomer();
-    } catch (err: any) {
-      setUploadError(err.message || 'Failed to auto-ingest sample statement');
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   const handleDownloadTemplate = () => {
     const csvData = generateSampleCsv();
@@ -203,15 +185,6 @@ export const BankStatementTab: React.FC<BankStatementTabProps> = ({
             <span>{isUploading ? 'Ingesting Statement...' : 'Upload Statement (CSV/XLSX/PDF)'}</span>
             <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" onChange={handleFileUpload} className="hidden" />
           </label>
-
-          <button
-            onClick={handleLoadSampleStatement}
-            disabled={isUploading}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-200 transition-all shadow-sm"
-          >
-            <Sparkles className="h-4 w-4 text-amber-400" />
-            <span>Load Sample 6-Month Statement</span>
-          </button>
 
           <button
             onClick={handleDownloadTemplate}

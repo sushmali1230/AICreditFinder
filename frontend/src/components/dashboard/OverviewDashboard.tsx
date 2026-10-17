@@ -205,7 +205,17 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
         ) : filteredCustomers.length === 0 ? (
           <div className="glass-panel rounded-2xl p-8 text-center text-slate-400 border border-slate-800">
             <FileSearch className="mx-auto h-8 w-8 text-slate-600 mb-2" />
-            <p className="font-medium text-slate-300 text-xs">No applications match your filter.</p>
+            <p className="font-medium text-slate-300 text-xs">
+              {customers.length === 0 ? 'No loan applicants in the database yet.' : 'No applications match your filter.'}
+            </p>
+            {customers.length === 0 && (
+              <button
+                onClick={onOpenNewCustomer}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 px-3.5 py-2 text-xs font-semibold text-white shadow-md transition-all"
+              >
+                <span>+ Add Loan Applicant</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredCustomers.map((customer) => {
@@ -340,8 +350,20 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
                 <tr>
                   <td colSpan={7} className="text-center py-12 text-slate-400">
                     <FileSearch className="mx-auto h-8 w-8 text-slate-600 mb-2" />
-                    <p className="font-medium text-slate-300">No loan applications match your filter criteria.</p>
-                    <p className="text-xs text-slate-500 mt-1">Try adjusting the search query or reset filters.</p>
+                    <p className="font-medium text-slate-300">
+                      {customers.length === 0 ? 'No loan applicants in the database yet.' : 'No loan applications match your filter criteria.'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {customers.length === 0 ? 'Create a real applicant to begin underwriting and uploading statements.' : 'Try adjusting the search query or reset filters.'}
+                    </p>
+                    {customers.length === 0 && (
+                      <button
+                        onClick={onOpenNewCustomer}
+                        className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all"
+                      >
+                        <span>+ Add Loan Applicant</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
