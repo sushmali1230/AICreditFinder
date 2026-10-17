@@ -65,6 +65,19 @@ function MainAppContent() {
     setDecisionModal({ isOpen: true, action });
   };
 
+  const handleRefreshWorkspace = async () => {
+    if (selectedCustomerId) {
+      try {
+        const { customer } = await api.customers.getById(selectedCustomerId);
+        setCustomers((prev) => prev.map((c) => (c.id === customer.id ? customer : c)));
+      } catch (_) {
+        fetchCustomers(selectedCustomerId);
+      }
+    } else {
+      fetchCustomers();
+    }
+  };
+
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) || customers[0];
 
   return (
@@ -92,7 +105,7 @@ function MainAppContent() {
             customers={customers}
             selectedCustomerId={selectedCustomer.id}
             onSelectCustomer={(id) => setSelectedCustomerId(id)}
-            onRefreshCustomer={() => fetchCustomers(selectedCustomerId)}
+            onRefreshCustomer={handleRefreshWorkspace}
             onOpenDecisionModal={handleOpenDecisionModal}
           />
         )}

@@ -12,6 +12,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Calendar,
+  Sparkles,
+  Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -109,12 +111,71 @@ export const BankStatementTab: React.FC<BankStatementTabProps> = ({
       formData.append('accountType', 'SAVINGS');
 
       await api.statements.upload(customerId, formData);
+      e.target.value = '';
       onRefreshCustomer();
     } catch (err: any) {
       setUploadError(err.message || 'Failed to upload statement');
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const generateSampleCsv = () => {
+    return `Date,Narration,Chq/Ref No,Withdrawal,Deposit,Balance
+01/05/2024,SALARY CR INFOSYS TECH,SAL8811,,185000,245000
+05/05/2024,HDFC BANK HOME LOAN EMI,EMI9912,28500,,216500
+10/05/2024,UPI SWIGGY FOOD ORDER,UPI4810,1250,,215250
+15/05/2024,ELECTRICITY BILL BESCOM,ELEC991,3400,,211850
+25/05/2024,ATM CASH WDL WHITEFIELD,ATM102,10000,,201850
+01/06/2024,SALARY CR INFOSYS TECH,SAL8812,,185000,386850
+05/06/2024,HDFC BANK HOME LOAN EMI,EMI9913,28500,,358350
+12/06/2024,MUTUAL FUND SIP GROWW,SIP3301,15000,,343350
+18/06/2024,GROCERY DMART RETAIL,POS9912,8200,,335150
+01/07/2024,SALARY CR INFOSYS TECH,SAL8813,,185000,520150
+05/07/2024,HDFC BANK HOME LOAN EMI,EMI9914,28500,,491650
+15/07/2024,MAHAVITARAN ELECTRICITY,ELEC992,3600,,488050
+01/08/2024,SALARY CR INFOSYS TECH,SAL8814,,185000,673050
+05/08/2024,HDFC BANK HOME LOAN EMI,EMI9915,28500,,644550
+12/08/2024,MUTUAL FUND SIP GROWW,SIP3302,15000,,629550
+01/09/2024,SALARY CR INFOSYS TECH,SAL8815,,185000,814550
+05/09/2024,HDFC BANK HOME LOAN EMI,EMI9916,28500,,786050
+22/09/2024,AIRTEL BROADBAND BILL,TEL401,1499,,784551
+01/10/2024,SALARY CR INFOSYS TECH,SAL8816,,185000,969551
+05/10/2024,HDFC BANK HOME LOAN EMI,EMI9917,28500,,941051
+`;
+  };
+
+  const handleLoadSampleStatement = async () => {
+    try {
+      setIsUploading(true);
+      setUploadError(null);
+      const csvData = generateSampleCsv();
+      const blob = new Blob([csvData], { type: 'text/csv' });
+      const formData = new FormData();
+      formData.append('file', blob, 'hdfc_statement_6months.csv');
+      formData.append('bankName', 'HDFC Bank');
+      formData.append('accountType', 'SAVINGS');
+
+      await api.statements.upload(customerId, formData);
+      onRefreshCustomer();
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to auto-ingest sample statement');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvData = generateSampleCsv();
+    const blob = new Blob([csvData], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bank_statement_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   if (!statement) {
@@ -126,12 +187,39 @@ export const BankStatementTab: React.FC<BankStatementTabProps> = ({
           Upload bank transaction statements in CSV, Excel (.xlsx/.xls), or PDF formats to analyze monthly cash flow, payroll deposits, EMIs, and bounces.
         </p>
 
-        <div className="mt-5 max-w-xs mx-auto">
+        {uploadError && (
+          <div className="mt-4 max-w-md mx-auto rounded-xl bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300 text-left">
+            <div className="flex items-center gap-2 font-bold mb-1">
+              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+              <span>Statement Processing Notice</span>
+            </div>
+            <p>{uploadError}</p>
+          </div>
+        )}
+
+        <div className="mt-5 max-w-sm mx-auto space-y-2.5">
           <label className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-xs font-semibold text-white shadow-lg cursor-pointer transition-all">
             <Upload className="h-4 w-4" />
             <span>{isUploading ? 'Ingesting Statement...' : 'Upload Statement (CSV/XLSX/PDF)'}</span>
             <input type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" onChange={handleFileUpload} className="hidden" />
           </label>
+
+          <button
+            onClick={handleLoadSampleStatement}
+            disabled={isUploading}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-200 transition-all shadow-sm"
+          >
+            <Sparkles className="h-4 w-4 text-amber-400" />
+            <span>Load Sample 6-Month Statement</span>
+          </button>
+
+          <button
+            onClick={handleDownloadTemplate}
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] text-blue-400 hover:text-blue-300 pt-1"
+          >
+            <Download className="h-3 w-3" />
+            <span>Download Sample Banking CSV Template</span>
+          </button>
         </div>
       </div>
     );

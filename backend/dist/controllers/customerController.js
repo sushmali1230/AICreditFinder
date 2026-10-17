@@ -47,10 +47,16 @@ export async function getCustomers(req, res) {
                     take: 1,
                 },
                 bankStatements: {
-                    select: { id: true, bankName: true, totalCredits: true, bounceCount: true, uploadedAt: true },
+                    include: {
+                        transactions: {
+                            orderBy: { date: 'asc' },
+                            take: 200,
+                        },
+                    },
+                    orderBy: { uploadedAt: 'desc' },
                 },
                 itrRecords: {
-                    select: { id: true, assessmentYear: true, financialYear: true, grossTotalIncome: true },
+                    orderBy: { financialYear: 'desc' },
                 },
             },
             orderBy: { createdAt: 'desc' },

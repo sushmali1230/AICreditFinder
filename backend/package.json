@@ -43,7 +43,7 @@
     "@types/pdfkit": "^0.17.6",
     "prisma": "^6.19.3",
     "tsx": "^4.23.15",
-    "typescript": "^5.8.0",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }
 }

@@ -1,7 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import { parseStatementCSV, parseStatementExcel, parseStatementText, analyzeBankTransactions, } from '../services/statementParser.js';
-import { logAudit } from '../services/auditService.js';
+import { runCreditAssessment } from '../services/creditEngine.js';
+import { generateCreditExplanation } from '../services/aiExplainer.js';
 const prisma = new PrismaClient();
 // Multer memory storage configuration for secure handling
 export const uploadStatementMulter = multer({
@@ -126,19 +127,90 @@ export async function uploadStatement(req, res) {
                 },
             });
         }
-        await logAudit({
-            userId: req.user?.id,
-            userName: req.user?.name,
-            userRole: req.user?.role,
-            action: 'STATEMENT_UPLOADED',
-            entityType: 'BankStatement',
-            entityId: statement.id,
-            details: `Processed ${parsedTransactions.length} transactions for ${customer.fullName}. Credits: ₹${analysis.totalCredits.toLocaleString('en-IN')}, Bounces: ${analysis.bounceCount}`,
-            ipAddress: req.ip,
+        // Automatically compute / update credit assessment for this customer
+        try {
+            const activePolicy = await prisma.lendingPolicyConfig.findFirst({
+                where: { isDefault: true },
+            });
+            const itrs = await prisma.itrRecord.findMany({
+                where: { customerId },
+                orderBy: { financialYear: 'desc' },
+            });
+            const allStatements = await prisma.bankStatement.findMany({
+                where: { customerId },
+                include: { transactions: true },
+                orderBy: { uploadedAt: 'desc' },
+            });
+            const policy = activePolicy || undefined;
+            const parsedItrs = itrs.map((r) => ({
+                assessmentYear: r.assessmentYear,
+                financialYear: r.financialYear,
+                formType: r.formType,
+                grossTotalIncome: r.grossTotalIncome,
+                taxableIncome: r.taxableIncome,
+                salaryIncome: r.salaryIncome,
+                businessProfessionIncome: r.businessProfessionIncome,
+                otherIncome: r.otherIncome,
+                chapterVIA_Deductions: r.chapterVIA_Deductions,
+                totalTaxesPaid: r.totalTaxesPaid,
+                refundOrPayable: r.refundOrPayable,
+                panNumber: r.panNumber,
+                isVerified: r.isVerified,
+            }));
+            const assessmentResult = runCreditAssessment(customer, analysis, parsedItrs, policy);
+            const aiExplanation = generateCreditExplanation(customer.fullName, assessmentResult, customer.requestedLoanAmount, customer.employmentType);
+            await prisma.creditAssessment.create({
+                data: {
+                    customerId,
+                    version: 1,
+                    status: 'ANALYSIS_COMPLETE',
+                    verifiedMonthlyIncome: assessmentResult.verifiedMonthlyIncome,
+                    existingDebtObligations: assessmentResult.existingDebtObligations,
+                    netDisposableIncome: assessmentResult.netDisposableIncome,
+                    dtiRatio: assessmentResult.dtiRatio,
+                    foirRatio: assessmentResult.foirRatio,
+                    affordableAdditionalEmi: assessmentResult.affordableAdditionalEmi,
+                    requestedAmount: assessmentResult.requestedAmount,
+                    requestedTenureMonths: assessmentResult.requestedTenureMonths,
+                    interestRateAnnual: assessmentResult.interestRateAnnual,
+                    calculatedMaxLoanPrincipal: assessmentResult.calculatedMaxLoanPrincipal,
+                    calculatedEmi: assessmentResult.calculatedEmi,
+                    totalInterestPayable: assessmentResult.totalInterestPayable,
+                    totalRepaymentAmount: assessmentResult.totalRepaymentAmount,
+                    riskGrade: assessmentResult.riskGrade,
+                    positiveIndicators: JSON.stringify(assessmentResult.positiveIndicators),
+                    riskFactors: JSON.stringify(assessmentResult.riskFactors),
+                    incomeDiscrepancies: JSON.stringify(assessmentResult.incomeDiscrepancies),
+                    missingDocuments: JSON.stringify(assessmentResult.missingDocuments),
+                    calculationAssumptions: JSON.stringify(assessmentResult.calculationAssumptions),
+                    recommendationReasoning: assessmentResult.recommendationReasoning,
+                    conservativeScenario: JSON.stringify(assessmentResult.conservativeScenario),
+                    standardScenario: JSON.stringify(assessmentResult.standardScenario),
+                    aggressiveScenario: JSON.stringify(assessmentResult.aggressiveScenario),
+                    aiExplanation,
+                },
+            });
+            await prisma.customer.update({
+                where: { id: customerId },
+                data: {
+                    riskCategory: assessmentResult.riskGrade === 'PRIME_A'
+                        ? 'LOW_RISK'
+                        : assessmentResult.riskGrade === 'GOOD_B'
+                            ? 'MODERATE_RISK'
+                            : 'HIGH_RISK',
+                },
+            });
+        }
+        catch (assessErr) {
+            console.warn('Auto assessment calculation note:', assessErr);
+        }
+        const statementWithTxns = await prisma.bankStatement.findUnique({
+            where: { id: statement.id },
+            include: { transactions: { orderBy: { date: 'asc' } } },
         });
         res.status(201).json({
             message: 'Bank statement ingested and analyzed successfully',
-            statement,
+            statement: statementWithTxns || statement,
             analysisSummary: {
                 ...analysis,
                 transactionsCount: parsedTransactions.length,
