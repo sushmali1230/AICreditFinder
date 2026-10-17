@@ -5,6 +5,8 @@ import {
   parseStatementCSV,
   parseStatementExcel,
   parseStatementText,
+  extractPdfText,
+  extractBankMetadata,
   analyzeBankTransactions,
   ParsedTransaction,
 } from '../services/statementParser.js';
@@ -58,6 +60,9 @@ export async function uploadStatement(req: AuthenticatedRequest, res: Response):
 
     let parsedTransactions: ParsedTransaction[] = [];
     let fileFormat = 'CSV';
+    let detectedBank = bankName;
+    let detectedAccMasked = '•••• •••• ' + Math.floor(1000 + Math.random() * 9000);
+    let detectedAccType = accountType as 'SAVINGS' | 'CURRENT';
 
     if (req.file) {
       const filename = req.file.originalname.toLowerCase();
@@ -68,9 +73,25 @@ export async function uploadStatement(req: AuthenticatedRequest, res: Response):
       } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
         fileFormat = 'EXCEL';
         parsedTransactions = parseStatementExcel(req.file.buffer);
-      } else if (filename.endsWith('.pdf') || filename.endsWith('.txt')) {
+      } else if (filename.endsWith('.pdf')) {
         fileFormat = 'PDF';
-        // Extract text from buffer
+        // Extract real text from binary PDF buffer using pdf-parse
+        const textContent = await extractPdfText(req.file.buffer);
+        const metadata = extractBankMetadata(textContent);
+
+        if (metadata.bankName && (detectedBank === 'Commercial Bank' || !detectedBank)) {
+          detectedBank = metadata.bankName;
+        }
+        if (metadata.accountNumberMasked) {
+          detectedAccMasked = metadata.accountNumberMasked;
+        }
+        if (metadata.accountType) {
+          detectedAccType = metadata.accountType;
+        }
+
+        parsedTransactions = parseStatementText(textContent);
+      } else if (filename.endsWith('.txt')) {
+        fileFormat = 'PDF';
         const textContent = req.file.buffer.toString('utf-8');
         parsedTransactions = parseStatementText(textContent);
       }
@@ -95,7 +116,8 @@ export async function uploadStatement(req: AuthenticatedRequest, res: Response):
 
     if (parsedTransactions.length === 0) {
       res.status(400).json({
-        error: 'Unable to extract valid banking transactions from the uploaded file. Please ensure the statement contains Date, Description, Debit/Credit, and Balance columns.',
+        error:
+          'Unable to extract valid banking transactions from the uploaded file. Please ensure the statement is an unlocked PDF, CSV, or Excel file with Date, Narration, Debit/Credit, and Balance columns.',
       });
       return;
     }
@@ -103,9 +125,9 @@ export async function uploadStatement(req: AuthenticatedRequest, res: Response):
     // Perform banking analysis
     const analysis = analyzeBankTransactions(
       parsedTransactions,
-      bankName,
-      '•••• •••• ' + Math.floor(1000 + Math.random() * 9000),
-      accountType as any
+      detectedBank,
+      detectedAccMasked,
+      detectedAccType
     );
 
     // Save Bank Statement header

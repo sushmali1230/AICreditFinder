@@ -267,59 +267,227 @@ export function parseStatementExcel(buffer) {
     return parsedTransactions.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 /**
- * Parse Bank Statement from PDF or Text buffer
- * Uses robust regex pattern matching for transaction lines (Date, Description, Ref, Dr, Cr, Bal)
+ * Extract text from a PDF Buffer using pdf-parse with fallback support
  */
-export function parseStatementText(content) {
-    const lines = content.split('\n');
-    const transactions = [];
-    // Common Indian statement date formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
-    const dateRegex = /^(\d{2}[-/]\d{2}[-/]\d{4}|\d{4}[-/]\d{2}[-/]\d{2})/;
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed)
-            continue;
-        const match = trimmed.match(dateRegex);
-        if (match) {
-            const datePart = match[1];
-            // Format to Date object
-            let dateObj = new Date(datePart);
-            if (datePart.includes('/')) {
-                const parts = datePart.split('/');
-                if (parts[0].length === 2 && parts[2].length === 4) {
-                    // DD/MM/YYYY
-                    dateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+export async function extractPdfText(buffer) {
+    try {
+        const pdfModule = await import('pdf-parse');
+        const PDFParseClass = pdfModule.PDFParse || (pdfModule.default && pdfModule.default.PDFParse);
+        if (typeof PDFParseClass === 'function' && PDFParseClass.prototype?.getText) {
+            const parser = new PDFParseClass({ data: buffer });
+            try {
+                const result = await parser.getText();
+                return result.text || '';
+            }
+            finally {
+                if (typeof parser.destroy === 'function') {
+                    await parser.destroy().catch(() => { });
                 }
             }
-            // Check numbers at end of line (Debit, Credit, Balance)
-            const rest = trimmed.substring(match[0].length).trim();
-            const numberMatches = rest.match(/[\d,]+\.\d{2}/g);
-            if (numberMatches && numberMatches.length >= 1) {
-                let amount = 0;
-                let type = 'DEBIT';
-                let balance = undefined;
-                if (numberMatches.length >= 2) {
-                    balance = parseFloat(numberMatches[numberMatches.length - 1].replace(/,/g, ''));
-                    amount = parseFloat(numberMatches[numberMatches.length - 2].replace(/,/g, ''));
+        }
+        const parseFn = typeof pdfModule === 'function'
+            ? pdfModule
+            : pdfModule.default && typeof pdfModule.default === 'function'
+                ? pdfModule.default
+                : null;
+        if (parseFn) {
+            const data = await parseFn(buffer);
+            return data.text || '';
+        }
+    }
+    catch (err) {
+        if (err?.name === 'PasswordException' || /password/i.test(err?.message || '')) {
+            throw new Error('This PDF is password-protected. Please upload an unlocked PDF statement.');
+        }
+        console.error('PDF parsing extraction error:', err);
+        throw new Error('Could not parse PDF text: ' + (err?.message || 'Invalid PDF format'));
+    }
+    throw new Error('PDF parsing library could not initialize');
+}
+/**
+ * Automatically detect Indian bank name, masked account number, and type from statement header text
+ */
+export function extractBankMetadata(text) {
+    let bankName = 'Commercial Bank';
+    if (/ICICI\s*Bank|ICICI/i.test(text))
+        bankName = 'ICICI Bank';
+    else if (/HDFC\s*Bank|HDFC/i.test(text))
+        bankName = 'HDFC Bank';
+    else if (/State\s*Bank\s*of\s*India|SBI\b/i.test(text))
+        bankName = 'State Bank of India';
+    else if (/Axis\s*Bank/i.test(text))
+        bankName = 'Axis Bank';
+    else if (/Kotak\s*Mahindra|Kotak\s*Bank|Kotak/i.test(text))
+        bankName = 'Kotak Mahindra Bank';
+    else if (/Bank\s*of\s*Baroda|BOB\b/i.test(text))
+        bankName = 'Bank of Baroda';
+    else if (/Punjab\s*National\s*Bank|PNB\b/i.test(text))
+        bankName = 'Punjab National Bank';
+    else if (/Canara\s*Bank/i.test(text))
+        bankName = 'Canara Bank';
+    else if (/IDFC\s*FIRST/i.test(text))
+        bankName = 'IDFC FIRST Bank';
+    else if (/IndusInd/i.test(text))
+        bankName = 'IndusInd Bank';
+    let accountNumberMasked = '•••• •••• ' + Math.floor(1000 + Math.random() * 9000);
+    const accMatch = text.match(/Account\s*(?:no\.?|number|#)?[:\s]*([0-9Xx*]{8,20})/i);
+    if (accMatch && accMatch[1]) {
+        const rawAcc = accMatch[1].replace(/\D/g, '');
+        if (rawAcc.length >= 4) {
+            accountNumberMasked = '•••• •••• ' + rawAcc.slice(-4);
+        }
+    }
+    let accountType = 'SAVINGS';
+    if (/current\s*account/i.test(text)) {
+        accountType = 'CURRENT';
+    }
+    return { bankName, accountNumberMasked, accountType };
+}
+/**
+ * Parse Bank Statement from PDF or Text buffer
+ * Handles both single-line and multi-line formats from major Indian banks (ICICI, HDFC, SBI, Axis, Kotak)
+ */
+export function parseStatementText(content) {
+    if (!content || !content.trim())
+        return [];
+    const lines = content.split('\n');
+    const transactions = [];
+    // Recognize start of a transaction row:
+    // e.g. "1 01.04.2026 ...", "01/04/2026 ...", "01-04-2026", "2026-04-01", "01 Apr 2026"
+    const startPattern = /^(?:(\d+)\s+)?(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2}|\d{2}[-/\s](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-/\s]\d{2,4})\b\s*(.*)$/i;
+    const blocks = [];
+    let currentBlock = null;
+    for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
+        const trimmed = rawLine.trim();
+        if (!trimmed)
+            continue;
+        // Filter out common header / metadata rows
+        if (/^(?:s\s*no\.?|transaction\s*date|cheque\s*number|withdrawal\s*amount|deposit\s*amount|balance\s*\(inr\)|statement\s*of|base\s*branch|saving\s*account|page\s+\d+|your\s*base\s*branch)/i.test(trimmed)) {
+            continue;
+        }
+        const match = trimmed.match(startPattern);
+        if (match) {
+            if (currentBlock)
+                blocks.push(currentBlock);
+            currentBlock = {
+                dateStr: match[2],
+                lines: [match[3] || ''],
+            };
+        }
+        else if (currentBlock) {
+            currentBlock.lines.push(trimmed);
+        }
+    }
+    if (currentBlock)
+        blocks.push(currentBlock);
+    // Helper function to parse diverse date formats into a Date
+    const parseFlexibleDate = (dStr) => {
+        // DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
+        const dmyMatch = dStr.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+        if (dmyMatch) {
+            const day = parseInt(dmyMatch[1], 10);
+            const month = parseInt(dmyMatch[2], 10) - 1;
+            const year = parseInt(dmyMatch[3], 10);
+            return new Date(Date.UTC(year, month, day));
+        }
+        // YYYY-MM-DD
+        const ymdMatch = dStr.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+        if (ymdMatch) {
+            const year = parseInt(ymdMatch[1], 10);
+            const month = parseInt(ymdMatch[2], 10) - 1;
+            const day = parseInt(ymdMatch[3], 10);
+            return new Date(Date.UTC(year, month, day));
+        }
+        const d = new Date(dStr);
+        return isNaN(d.getTime()) ? new Date() : d;
+    };
+    let prevBal = null;
+    for (const block of blocks) {
+        const validDate = parseFlexibleDate(block.dateStr);
+        const combined = block.lines.join(' ');
+        // Extract currency-like decimal numbers (e.g. 8000.00, 134,305.00, 83379.13)
+        const numberMatches = combined.match(/[\d,]+\.\d{2}/g);
+        if (numberMatches && numberMatches.length >= 1) {
+            let amount = 0;
+            let balance = undefined;
+            let type = 'DEBIT';
+            if (numberMatches.length >= 2) {
+                balance = parseFloat(numberMatches[numberMatches.length - 1].replace(/,/g, ''));
+                amount = parseFloat(numberMatches[numberMatches.length - 2].replace(/,/g, ''));
+            }
+            else {
+                amount = parseFloat(numberMatches[0].replace(/,/g, ''));
+            }
+            if (amount <= 0 || isNaN(amount))
+                continue;
+            // Determine CREDIT vs DEBIT using balance difference
+            if (balance !== undefined && prevBal !== null) {
+                const diff = balance - prevBal;
+                if (diff > 0.01) {
+                    type = 'CREDIT';
+                }
+                else if (diff < -0.01) {
+                    type = 'DEBIT';
                 }
                 else {
-                    amount = parseFloat(numberMatches[0].replace(/,/g, ''));
+                    type = /SALARY|CREDIT|CR\b|DEPOSIT|REFUND|REVERSAL/i.test(combined) ? 'CREDIT' : 'DEBIT';
                 }
-                const isCredit = /CR|CREDIT|DEPOSIT|SALARY/i.test(rest);
-                type = isCredit ? 'CREDIT' : 'DEBIT';
-                const description = rest.replace(/[\d,]+\.\d{2}/g, '').trim();
-                const { category, isBounced, bounceReason } = categorizeTransaction(description, type, amount);
-                transactions.push({
-                    date: isNaN(dateObj.getTime()) ? new Date() : dateObj,
-                    description: description || 'Bank Transaction',
-                    amount,
-                    type,
-                    category,
-                    balanceAfter: balance,
-                    isUnusual: isUnusualTransaction(amount, type, category),
-                    isBounced,
-                    bounceReason,
-                });
+            }
+            else {
+                type = /SALARY|CREDIT|CR\b|DEPOSIT|REFUND|REVERSAL/i.test(combined) ? 'CREDIT' : 'DEBIT';
+            }
+            // Remove numbers from description and clean up
+            let description = combined
+                .replace(/[\d,]+\.\d{2}/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!description)
+                description = 'Bank Transaction';
+            const { category, isBounced, bounceReason } = categorizeTransaction(description, type, amount);
+            transactions.push({
+                date: validDate,
+                description,
+                amount,
+                type,
+                category,
+                balanceAfter: balance,
+                isUnusual: isUnusualTransaction(amount, type, category),
+                isBounced,
+                bounceReason,
+            });
+            if (balance !== undefined && !isNaN(balance)) {
+                prevBal = balance;
+            }
+        }
+    }
+    // Fallback: If block-based extraction found nothing, do simple line-by-line fallback
+    if (transactions.length === 0) {
+        const singleLineDateRegex = /(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2})/;
+        for (const line of lines) {
+            const match = line.match(singleLineDateRegex);
+            if (match) {
+                const numMatches = line.match(/[\d,]+\.\d{2}/g);
+                if (numMatches && numMatches.length >= 1) {
+                    const validDate = parseFlexibleDate(match[1]);
+                    const amount = parseFloat(numMatches[0].replace(/,/g, ''));
+                    const balance = numMatches.length >= 2 ? parseFloat(numMatches[numMatches.length - 1].replace(/,/g, '')) : undefined;
+                    const isCredit = /CR|CREDIT|DEPOSIT|SALARY/i.test(line);
+                    const type = isCredit ? 'CREDIT' : 'DEBIT';
+                    const description = line.replace(singleLineDateRegex, '').replace(/[\d,]+\.\d{2}/g, '').trim() || 'Bank Transaction';
+                    const { category, isBounced, bounceReason } = categorizeTransaction(description, type, amount);
+                    transactions.push({
+                        date: validDate,
+                        description,
+                        amount,
+                        type,
+                        category,
+                        balanceAfter: balance,
+                        isUnusual: isUnusualTransaction(amount, type, category),
+                        isBounced,
+                        bounceReason,
+                    });
+                }
             }
         }
     }
